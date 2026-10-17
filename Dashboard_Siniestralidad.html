@@ -1,0 +1,404 @@
+<!DOCTYPE html>
+    <html lang="es">
+    <head>
+        <meta charset="UTF-8">
+        <meta name="viewport" content="width=device-width, initial-scale=1.0">
+        <title>Dashboard | Concentración de Riesgos</title>
+        
+        <script src="https://cdn.plot.ly/plotly-2.35.2.min.js"></script>
+        <script src="https://code.jquery.com/jquery-3.7.1.min.js"></script>
+        <script src="https://cdn.datatables.net/1.13.6/js/jquery.dataTables.js"></script>
+        <link rel="stylesheet" href="https://cdn.datatables.net/1.13.6/css/jquery.dataTables.css">
+        
+        <style>
+            @import url('https://fonts.googleapis.com/css2?family=Inter:wght@300;500;700;900&display=swap');
+            :root {
+                --bg-body: #EEF0F4; --bg-card: #FFFFFF; --header-bg: #1A1A24;
+                --text-main: #2C303A; --accent-lila: #C5CAE9; --accent-morado: #7E57C2; --accent-dark: #311B92;
+            }
+            * { box-sizing: border-box; }
+            body { font-family: 'Inter', sans-serif; background-color: var(--bg-body); color: var(--text-main); margin: 0; padding: 20px; }
+            .container { max-width: 1400px; margin: 0 auto; }
+            
+            .header { background: var(--header-bg); color: white; padding: 25px 30px; border-radius: 12px; border-bottom: 4px solid var(--accent-morado); margin-bottom: 25px; display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 15px; }
+            .header h1 { margin: 0; font-size: 1.8rem; font-weight: 900; letter-spacing: -0.5px; }
+            .header p { margin: 5px 0 0 0; color: var(--accent-lila); font-size: 0.95rem; }
+            
+            .tab-nav { display: flex; background: rgba(255,255,255,0.1); padding: 5px; border-radius: 8px; flex-wrap: wrap; align-items:center; }
+            .tab-label { background: none; border: none; color: #fff; padding: 10px 20px; font-weight: 700; cursor: pointer; border-radius: 6px; transition: 0.3s; }
+            .tab-label.active { background: var(--accent-morado); color: white; }
+            
+            .btn-reset { background: #D32F2F; color: white; border: none; padding: 8px 15px; border-radius: 4px; font-weight: bold; cursor: pointer; margin-left: 15px; display:none; }
+            .btn-reset:hover { background: #B71C1C; }
+
+            .tab-content { display: none; animation: fadeIn 0.4s; }
+            
+            .kpi-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 15px; margin-bottom: 25px; }
+            .kpi-card { background: var(--bg-card); padding: 20px; border-radius: 12px; border-left: 6px solid var(--accent-dark); transition: 0.3s; }
+            .kpi-card.clickable { cursor: pointer; }
+            .kpi-card.clickable:hover { transform: translateY(-3px); box-shadow: 0 4px 15px rgba(0,0,0,0.1); }
+            .kpi-card.active-filter { background: #f0f0fa; border-width: 8px; }
+
+            .kpi-title { font-size: 0.8rem; text-transform: uppercase; font-weight: 700; color: #787E8F; letter-spacing: 0.5px; }
+            .kpi-val { font-size: 2rem; font-weight: 900; margin-top: 10px; color: var(--header-bg); line-height: 1; }
+            
+            .main-grid { display: grid; grid-template-columns: 1fr; gap: 20px; }
+            @media (min-width: 1024px) { .main-grid { grid-template-columns: 3fr 2fr; } }
+            
+            .chart-card { background: var(--bg-card); padding: 25px; border-radius: 12px; overflow: hidden; }
+            .chart-title { margin: 0 0 15px 0; font-size: 1.1rem; border-bottom: 2px dashed var(--accent-lila); padding-bottom: 10px; color: var(--header-bg); }
+            
+            .map-container { display: grid; grid-template-columns: 1fr; gap: 20px; }
+            @media (min-width: 1200px) { .map-container { grid-template-columns: 3fr 1fr; align-items: start; } }
+            
+            .min-table { width: 100%; text-align: left; border-collapse: collapse; }
+            .min-table th { border-bottom: 2px solid var(--accent-morado); padding: 10px 5px; color: var(--header-bg); font-size: 0.85rem; }
+            .min-table td { padding: 10px 5px; border-bottom: 1px solid #E4E7EB; font-size: 0.9rem; font-weight: 500; cursor: pointer; transition: 0.2s; }
+            .min-table tbody tr:hover td { background: #f5f5f5; color: var(--accent-morado); font-weight: bold; }
+
+            .table-wrapper { background: var(--bg-card); padding: 25px; border-radius: 12px; overflow-x: auto; }
+            table.dataTable thead th { background: var(--header-bg); color: white; border: none; font-size: 0.85rem; }
+            
+            .js-plotly-plot, .plot-container { width: 100% !important; }
+            
+            @keyframes fadeIn { from { opacity: 0; } to { opacity: 1; } }
+        </style>
+    </head>
+    <body>
+        <div class="container">
+            <div class="header">
+                <div>
+                    <h1>Inteligencia de Siniestralidad</h1>
+                    <p>Monitoreo Actuarial de Concentración de Riesgos</p>
+                </div>
+                <div class="tab-nav">
+                    <button class="tab-label active" onclick="openTab(event, 'tab-resumen')">📊 Resumen Espacial</button>
+                    <button class="tab-label" onclick="openTab(event, 'tab-datos')">📋 Base de Pólizas</button>
+                    <button id="btnResetFilters" class="btn-reset" onclick="resetAllFilters()">Limpiar Filtros ✖</button>
+                </div>
+            </div>
+            
+            <div id="tab-resumen" class="tab-content" style="display: block;">
+                <div class="kpi-grid">
+                    <div class="kpi-card">
+                        <div class="kpi-title">Cartera Total</div>
+                        <div class="kpi-val" id="kpi-total">0</div>
+                    </div>
+                    <div class="kpi-card" style="border-left-color: #4CAF50;">
+                        <div class="kpi-title">Suma Asegurada Total</div>
+                        <div class="kpi-val" id="kpi-suma" style="color: #4CAF50; font-size: 1.6rem;">$0</div>
+                    </div>
+                    <div class="kpi-card clickable" id="kpi-card-bajo" style="border-left-color: var(--accent-lila);" onclick="toggleRiskFilter('Bajo')">
+                        <div class="kpi-title">Riesgo Bajo (Filtrar)</div>
+                        <div class="kpi-val" id="kpi-bajo" style="color: var(--accent-lila);">0</div>
+                    </div>
+                    <div class="kpi-card clickable" id="kpi-card-medio" style="border-left-color: var(--accent-morado);" onclick="toggleRiskFilter('Medio')">
+                        <div class="kpi-title">Riesgo Medio (Filtrar)</div>
+                        <div class="kpi-val" id="kpi-medio" style="color: var(--accent-morado);">0</div>
+                    </div>
+                    <div class="kpi-card clickable" id="kpi-card-alto" style="border-left-color: var(--accent-dark);" onclick="toggleRiskFilter('Alto')">
+                        <div class="kpi-title">Riesgo Alto (Filtrar)</div>
+                        <div class="kpi-val" id="kpi-alto" style="color: var(--accent-dark);">0 <span style="font-size:1rem; color:#787E8F;">Pólizas</span></div>
+                    </div>
+                </div>
+
+                <div class="main-grid">
+                    <div class="chart-card">
+                        <h3 class="chart-title">📍 Dispersión Geográfica (Click para filtrar Estado)</h3>
+                        <div class="map-container">
+                            <div id="plotly-mapa" style="height: 500px;"></div>
+                            <div>
+                                <h4 style="margin: 0 0 10px 0; color: var(--accent-dark); font-size: 0.9rem;">⚠️ Zonas Críticas (Click para filtrar)</h4>
+                                <div id="top5-container"></div>
+                            </div>
+                        </div>
+                    </div>
+                    
+                    <div style="display: flex; flex-direction: column; gap: 20px;">
+                        <div class="chart-card">
+                            <h3 class="chart-title">📈 Riesgo por Ramo (Click para filtrar Ramo)</h3>
+                            <div id="plotly-bar" style="height: 350px;"></div>
+                        </div>
+                        <div class="chart-card">
+                            <h3 class="chart-title">Composición de Cartera</h3>
+                            <div id="plotly-pie" style="height: 350px;"></div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div id="tab-datos" class="tab-content">
+                <div class="table-wrapper">
+                    <h3 class="chart-title">Desglose a Nivel Póliza</h3>
+                    <table id="tablaPolizas" class="display w-full"></table>
+                </div>
+            </div>
+        </div>
+
+        <script>
+            // Datos inyectados desde Python
+            const rawData = [{"Poliza_ID":"POL-00001","Estado":"Guanajuato","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1362705.1000000001},{"Poliza_ID":"POL-00002","Estado":"Yucat\u00e1n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":459500.94},{"Poliza_ID":"POL-00003","Estado":"Sinaloa","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":581975.08},{"Poliza_ID":"POL-00004","Estado":"Sonora","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":989547.4},{"Poliza_ID":"POL-00005","Estado":"Puebla","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":380569.77},{"Poliza_ID":"POL-00006","Estado":"Sinaloa","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":543069.89},{"Poliza_ID":"POL-00007","Estado":"Colima","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":53192.88},{"Poliza_ID":"POL-00008","Estado":"Michoac\u00e1n","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1472463.6699999999},{"Poliza_ID":"POL-00009","Estado":"Oaxaca","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":647269.15},{"Poliza_ID":"POL-00010","Estado":"Chiapas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":950659.97},{"Poliza_ID":"POL-00011","Estado":"Baja California Sur","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":752727.59},{"Poliza_ID":"POL-00012","Estado":"M\u00e9xico","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1407568.8300000001},{"Poliza_ID":"POL-00013","Estado":"Hidalgo","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":663597.78},{"Poliza_ID":"POL-00014","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":638083.72},{"Poliza_ID":"POL-00015","Estado":"Chiapas","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1468751.53},{"Poliza_ID":"POL-00016","Estado":"Morelos","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":468728.63},{"Poliza_ID":"POL-00017","Estado":"San Luis Potos\u00ed","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":138338.35},{"Poliza_ID":"POL-00018","Estado":"Zacatecas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":114205.87},{"Poliza_ID":"POL-00019","Estado":"M\u00e9xico","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":274686.13},{"Poliza_ID":"POL-00020","Estado":"Tabasco","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":993343.85},{"Poliza_ID":"POL-00021","Estado":"Durango","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":582378.11},{"Poliza_ID":"POL-00022","Estado":"Sinaloa","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":568107.71},{"Poliza_ID":"POL-00023","Estado":"Coahuila","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":597671.51},{"Poliza_ID":"POL-00024","Estado":"Yucat\u00e1n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":849235.84},{"Poliza_ID":"POL-00025","Estado":"Tabasco","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":222536.8},{"Poliza_ID":"POL-00026","Estado":"Baja California Sur","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":977315.0600000001},{"Poliza_ID":"POL-00027","Estado":"Campeche","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":435931.95},{"Poliza_ID":"POL-00028","Estado":"Quer\u00e9taro","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":311931.76},{"Poliza_ID":"POL-00029","Estado":"Puebla","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":438746.08},{"Poliza_ID":"POL-00030","Estado":"Guanajuato","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":971236.42},{"Poliza_ID":"POL-00031","Estado":"Oaxaca","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":566901.3100000001},{"Poliza_ID":"POL-00032","Estado":"Guerrero","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1173857.1799999999},{"Poliza_ID":"POL-00033","Estado":"Chihuahua","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":1431488.04},{"Poliza_ID":"POL-00034","Estado":"Colima","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1303028.8600000001},{"Poliza_ID":"POL-00035","Estado":"Oaxaca","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":890654.1800000001},{"Poliza_ID":"POL-00036","Estado":"Baja California","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":650128.48},{"Poliza_ID":"POL-00037","Estado":"Michoac\u00e1n","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":888768.51},{"Poliza_ID":"POL-00038","Estado":"Morelos","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":446901.14},{"Poliza_ID":"POL-00039","Estado":"Sinaloa","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1187791.52},{"Poliza_ID":"POL-00040","Estado":"Oaxaca","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":447272.11},{"Poliza_ID":"POL-00041","Estado":"Chihuahua","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":618171.47},{"Poliza_ID":"POL-00042","Estado":"Oaxaca","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":956455.73},{"Poliza_ID":"POL-00043","Estado":"Puebla","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":639045.22},{"Poliza_ID":"POL-00044","Estado":"Morelos","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":339098.27},{"Poliza_ID":"POL-00045","Estado":"Puebla","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":440985.09},{"Poliza_ID":"POL-00046","Estado":"Durango","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":922918.51},{"Poliza_ID":"POL-00047","Estado":"Tlaxcala","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1219766.3500000001},{"Poliza_ID":"POL-00048","Estado":"Durango","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1379786.97},{"Poliza_ID":"POL-00049","Estado":"Puebla","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":447223.88},{"Poliza_ID":"POL-00050","Estado":"Zacatecas","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1444671.6000000001},{"Poliza_ID":"POL-00051","Estado":"Baja California","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":125731.09},{"Poliza_ID":"POL-00052","Estado":"Puebla","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":896798.84},{"Poliza_ID":"POL-00053","Estado":"Tamaulipas","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1310008.1299999999},{"Poliza_ID":"POL-00054","Estado":"Oaxaca","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":121365.12},{"Poliza_ID":"POL-00055","Estado":"Quer\u00e9taro","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":696924.12},{"Poliza_ID":"POL-00056","Estado":"Nayarit","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":447489.12},{"Poliza_ID":"POL-00057","Estado":"Nayarit","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":129075.04},{"Poliza_ID":"POL-00058","Estado":"Sonora","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":876006.1899999999},{"Poliza_ID":"POL-00059","Estado":"Tamaulipas","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":642672.17},{"Poliza_ID":"POL-00060","Estado":"Tamaulipas","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":613158.5},{"Poliza_ID":"POL-00061","Estado":"Sinaloa","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":151666.94},{"Poliza_ID":"POL-00062","Estado":"Durango","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":119141.68},{"Poliza_ID":"POL-00063","Estado":"Jalisco","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":475996.63},{"Poliza_ID":"POL-00064","Estado":"Chiapas","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":659580.87},{"Poliza_ID":"POL-00065","Estado":"Veracruz","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":148613.49},{"Poliza_ID":"POL-00066","Estado":"Tabasco","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":186734.09},{"Poliza_ID":"POL-00067","Estado":"Aguascalientes","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":303806.09},{"Poliza_ID":"POL-00068","Estado":"Tabasco","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1477653.9099999999},{"Poliza_ID":"POL-00069","Estado":"M\u00e9xico","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1466254.6299999999},{"Poliza_ID":"POL-00070","Estado":"Nuevo Le\u00f3n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":885994.01},{"Poliza_ID":"POL-00071","Estado":"Quer\u00e9taro","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":852880.83},{"Poliza_ID":"POL-00072","Estado":"Sonora","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":401054.87},{"Poliza_ID":"POL-00073","Estado":"Zacatecas","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":927209.1},{"Poliza_ID":"POL-00074","Estado":"Chihuahua","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":1152035.79},{"Poliza_ID":"POL-00075","Estado":"Sonora","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":630763.47},{"Poliza_ID":"POL-00076","Estado":"Tabasco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":934333.73},{"Poliza_ID":"POL-00077","Estado":"Durango","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1447254.55},{"Poliza_ID":"POL-00078","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":446838.67},{"Poliza_ID":"POL-00079","Estado":"Michoac\u00e1n","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":683294.41},{"Poliza_ID":"POL-00080","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":189733.2},{"Poliza_ID":"POL-00081","Estado":"Baja California","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":493851.44},{"Poliza_ID":"POL-00082","Estado":"Chihuahua","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":186502.79},{"Poliza_ID":"POL-00083","Estado":"Jalisco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":652324.4},{"Poliza_ID":"POL-00084","Estado":"Durango","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":84298.12},{"Poliza_ID":"POL-00085","Estado":"Chiapas","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":782353.13},{"Poliza_ID":"POL-00086","Estado":"Veracruz","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":166594.29},{"Poliza_ID":"POL-00087","Estado":"Colima","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":79038.27},{"Poliza_ID":"POL-00088","Estado":"Quintana Roo","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":459114.45},{"Poliza_ID":"POL-00089","Estado":"Baja California","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1464186.5900000001},{"Poliza_ID":"POL-00090","Estado":"Chiapas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":53102.46},{"Poliza_ID":"POL-00091","Estado":"Michoac\u00e1n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":790340.27},{"Poliza_ID":"POL-00092","Estado":"Tamaulipas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1092212.02},{"Poliza_ID":"POL-00093","Estado":"Veracruz","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":523617.73},{"Poliza_ID":"POL-00094","Estado":"Sonora","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":422324.99},{"Poliza_ID":"POL-00095","Estado":"Guerrero","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":315187.27},{"Poliza_ID":"POL-00096","Estado":"Michoac\u00e1n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":1148824.8400000001},{"Poliza_ID":"POL-00097","Estado":"Guanajuato","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1335053.47},{"Poliza_ID":"POL-00098","Estado":"Sinaloa","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":803598.87},{"Poliza_ID":"POL-00099","Estado":"Guanajuato","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":514352.84},{"Poliza_ID":"POL-00100","Estado":"Campeche","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1414248.1799999999},{"Poliza_ID":"POL-00101","Estado":"Zacatecas","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":818294.7},{"Poliza_ID":"POL-00102","Estado":"Michoac\u00e1n","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":635949.25},{"Poliza_ID":"POL-00103","Estado":"Hidalgo","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":919336.08},{"Poliza_ID":"POL-00104","Estado":"Tamaulipas","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":579445.34},{"Poliza_ID":"POL-00105","Estado":"Chihuahua","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":681852.58},{"Poliza_ID":"POL-00106","Estado":"Sinaloa","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":1284898.77},{"Poliza_ID":"POL-00107","Estado":"Nayarit","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1376522.05},{"Poliza_ID":"POL-00108","Estado":"Quer\u00e9taro","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":159722.7},{"Poliza_ID":"POL-00109","Estado":"Sinaloa","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1184891.4099999999},{"Poliza_ID":"POL-00110","Estado":"Aguascalientes","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1180739.5600000001},{"Poliza_ID":"POL-00111","Estado":"Jalisco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":808298.59},{"Poliza_ID":"POL-00112","Estado":"Campeche","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":173748.0},{"Poliza_ID":"POL-00113","Estado":"Sonora","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1237008.1100000001},{"Poliza_ID":"POL-00114","Estado":"Veracruz","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1391092.78},{"Poliza_ID":"POL-00115","Estado":"Ciudad de M\u00e9xico","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1066952.8},{"Poliza_ID":"POL-00116","Estado":"Tabasco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":801594.8},{"Poliza_ID":"POL-00117","Estado":"Chihuahua","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1406531.1499999999},{"Poliza_ID":"POL-00118","Estado":"Colima","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":762498.9399999999},{"Poliza_ID":"POL-00119","Estado":"Nayarit","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":707208.58},{"Poliza_ID":"POL-00120","Estado":"Tabasco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":478957.58},{"Poliza_ID":"POL-00121","Estado":"Sonora","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1007923.23},{"Poliza_ID":"POL-00122","Estado":"Yucat\u00e1n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":465694.78},{"Poliza_ID":"POL-00123","Estado":"Chihuahua","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":767170.53},{"Poliza_ID":"POL-00124","Estado":"Durango","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":644370.73},{"Poliza_ID":"POL-00125","Estado":"Aguascalientes","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1002353.05},{"Poliza_ID":"POL-00126","Estado":"Sinaloa","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":81881.23},{"Poliza_ID":"POL-00127","Estado":"Chihuahua","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":252927.84},{"Poliza_ID":"POL-00128","Estado":"Colima","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":768624.1899999999},{"Poliza_ID":"POL-00129","Estado":"San Luis Potos\u00ed","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1225741.49},{"Poliza_ID":"POL-00130","Estado":"Campeche","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1183864.7},{"Poliza_ID":"POL-00131","Estado":"Sonora","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":651500.96},{"Poliza_ID":"POL-00132","Estado":"Tlaxcala","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":317712.08},{"Poliza_ID":"POL-00133","Estado":"Jalisco","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":703141.08},{"Poliza_ID":"POL-00134","Estado":"Baja California Sur","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":973093.1},{"Poliza_ID":"POL-00135","Estado":"Baja California Sur","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1410842.75},{"Poliza_ID":"POL-00136","Estado":"Tamaulipas","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1411841.0600000001},{"Poliza_ID":"POL-00137","Estado":"Tlaxcala","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":75267.47},{"Poliza_ID":"POL-00138","Estado":"San Luis Potos\u00ed","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1101550.3899999999},{"Poliza_ID":"POL-00139","Estado":"Baja California Sur","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":499701.41},{"Poliza_ID":"POL-00140","Estado":"Chiapas","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1250518.4399999999},{"Poliza_ID":"POL-00141","Estado":"Aguascalientes","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":638866.5699999999},{"Poliza_ID":"POL-00142","Estado":"Nuevo Le\u00f3n","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":426716.68},{"Poliza_ID":"POL-00143","Estado":"Tabasco","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":377526.42},{"Poliza_ID":"POL-00144","Estado":"Baja California","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":731834.51},{"Poliza_ID":"POL-00145","Estado":"Aguascalientes","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":473174.19},{"Poliza_ID":"POL-00146","Estado":"Puebla","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":594880.58},{"Poliza_ID":"POL-00147","Estado":"Guanajuato","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":335335.86},{"Poliza_ID":"POL-00148","Estado":"Coahuila","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":317813.77},{"Poliza_ID":"POL-00149","Estado":"Nayarit","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":504467.1},{"Poliza_ID":"POL-00150","Estado":"Yucat\u00e1n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":1146274.0700000001},{"Poliza_ID":"POL-00151","Estado":"Hidalgo","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":115435.09},{"Poliza_ID":"POL-00152","Estado":"Campeche","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1138971.77},{"Poliza_ID":"POL-00153","Estado":"M\u00e9xico","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1049977.7},{"Poliza_ID":"POL-00154","Estado":"Zacatecas","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":384982.91},{"Poliza_ID":"POL-00155","Estado":"Morelos","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":159961.12},{"Poliza_ID":"POL-00156","Estado":"Zacatecas","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1319146.1100000001},{"Poliza_ID":"POL-00157","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":460968.55},{"Poliza_ID":"POL-00158","Estado":"Jalisco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":561529.03},{"Poliza_ID":"POL-00159","Estado":"Aguascalientes","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":699538.51},{"Poliza_ID":"POL-00160","Estado":"Jalisco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":476570.51},{"Poliza_ID":"POL-00161","Estado":"Oaxaca","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1221102.99},{"Poliza_ID":"POL-00162","Estado":"Nayarit","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1476586.4099999999},{"Poliza_ID":"POL-00163","Estado":"Tlaxcala","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":976150.1800000001},{"Poliza_ID":"POL-00164","Estado":"Morelos","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":757534.61},{"Poliza_ID":"POL-00165","Estado":"Tamaulipas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":317250.71},{"Poliza_ID":"POL-00166","Estado":"Baja California","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1497209.25},{"Poliza_ID":"POL-00167","Estado":"Michoac\u00e1n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":176464.57},{"Poliza_ID":"POL-00168","Estado":"Guanajuato","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":53707.64},{"Poliza_ID":"POL-00169","Estado":"Ciudad de M\u00e9xico","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":236192.93},{"Poliza_ID":"POL-00170","Estado":"Jalisco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1109768.9099999999},{"Poliza_ID":"POL-00171","Estado":"Oaxaca","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":183002.04},{"Poliza_ID":"POL-00172","Estado":"Sonora","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":175987.38},{"Poliza_ID":"POL-00173","Estado":"Colima","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1246075.1100000001},{"Poliza_ID":"POL-00174","Estado":"Campeche","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":833242.0},{"Poliza_ID":"POL-00175","Estado":"Michoac\u00e1n","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":601712.54},{"Poliza_ID":"POL-00176","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":71087.44},{"Poliza_ID":"POL-00177","Estado":"Baja California","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1291303.0700000001},{"Poliza_ID":"POL-00178","Estado":"Tamaulipas","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1466569.6100000001},{"Poliza_ID":"POL-00179","Estado":"Quer\u00e9taro","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":772287.97},{"Poliza_ID":"POL-00180","Estado":"Jalisco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":1281411.75},{"Poliza_ID":"POL-00181","Estado":"M\u00e9xico","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":856507.65},{"Poliza_ID":"POL-00182","Estado":"Coahuila","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1418823.21},{"Poliza_ID":"POL-00183","Estado":"Ciudad de M\u00e9xico","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":246436.28},{"Poliza_ID":"POL-00184","Estado":"Guanajuato","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":590151.88},{"Poliza_ID":"POL-00185","Estado":"Guanajuato","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":260885.77},{"Poliza_ID":"POL-00186","Estado":"Aguascalientes","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1208656.6699999999},{"Poliza_ID":"POL-00187","Estado":"Morelos","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":278789.53},{"Poliza_ID":"POL-00188","Estado":"Colima","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1392683.26},{"Poliza_ID":"POL-00189","Estado":"Guerrero","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":885281.1899999999},{"Poliza_ID":"POL-00190","Estado":"Aguascalientes","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":571447.8},{"Poliza_ID":"POL-00191","Estado":"San Luis Potos\u00ed","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":1127497.3700000001},{"Poliza_ID":"POL-00192","Estado":"Durango","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":323439.56},{"Poliza_ID":"POL-00193","Estado":"Tabasco","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":588331.75},{"Poliza_ID":"POL-00194","Estado":"Chihuahua","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":237565.44},{"Poliza_ID":"POL-00195","Estado":"Nayarit","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":446067.2},{"Poliza_ID":"POL-00196","Estado":"Yucat\u00e1n","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":960298.24},{"Poliza_ID":"POL-00197","Estado":"Sonora","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":924642.59},{"Poliza_ID":"POL-00198","Estado":"Colima","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1247238.3899999999},{"Poliza_ID":"POL-00199","Estado":"Zacatecas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1365889.6799999999},{"Poliza_ID":"POL-00200","Estado":"Chihuahua","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1321086.8899999999},{"Poliza_ID":"POL-00201","Estado":"Sinaloa","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":400426.42},{"Poliza_ID":"POL-00202","Estado":"Coahuila","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1126115.98},{"Poliza_ID":"POL-00203","Estado":"Yucat\u00e1n","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1392757.6499999999},{"Poliza_ID":"POL-00204","Estado":"Baja California Sur","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":623726.49},{"Poliza_ID":"POL-00205","Estado":"Ciudad de M\u00e9xico","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":680274.02},{"Poliza_ID":"POL-00206","Estado":"Oaxaca","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":417381.35},{"Poliza_ID":"POL-00207","Estado":"Sonora","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":808621.91},{"Poliza_ID":"POL-00208","Estado":"Guanajuato","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":530247.37},{"Poliza_ID":"POL-00209","Estado":"Sonora","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":843996.86},{"Poliza_ID":"POL-00210","Estado":"Coahuila","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1220557.5900000001},{"Poliza_ID":"POL-00211","Estado":"Campeche","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":436687.85},{"Poliza_ID":"POL-00212","Estado":"Quer\u00e9taro","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":736131.17},{"Poliza_ID":"POL-00213","Estado":"Aguascalientes","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":293810.14},{"Poliza_ID":"POL-00214","Estado":"Tamaulipas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":102478.99},{"Poliza_ID":"POL-00215","Estado":"Coahuila","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1047690.91},{"Poliza_ID":"POL-00216","Estado":"Morelos","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":595046.15},{"Poliza_ID":"POL-00217","Estado":"Sonora","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":336898.21},{"Poliza_ID":"POL-00218","Estado":"Aguascalientes","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":583745.08},{"Poliza_ID":"POL-00219","Estado":"Morelos","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":835044.6899999999},{"Poliza_ID":"POL-00220","Estado":"Hidalgo","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":198278.5},{"Poliza_ID":"POL-00221","Estado":"Hidalgo","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1226537.1299999999},{"Poliza_ID":"POL-00222","Estado":"Chiapas","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1214656.95},{"Poliza_ID":"POL-00223","Estado":"Oaxaca","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":517360.97},{"Poliza_ID":"POL-00224","Estado":"Baja California","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1466220.78},{"Poliza_ID":"POL-00225","Estado":"Nuevo Le\u00f3n","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1421357.72},{"Poliza_ID":"POL-00226","Estado":"Oaxaca","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1424697.23},{"Poliza_ID":"POL-00227","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":922371.46},{"Poliza_ID":"POL-00228","Estado":"Sonora","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1445271.48},{"Poliza_ID":"POL-00229","Estado":"Quer\u00e9taro","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1353768.1399999999},{"Poliza_ID":"POL-00230","Estado":"Colima","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1185052.02},{"Poliza_ID":"POL-00231","Estado":"Chihuahua","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1103660.51},{"Poliza_ID":"POL-00232","Estado":"Zacatecas","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":180398.77},{"Poliza_ID":"POL-00233","Estado":"Quer\u00e9taro","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":1126656.03},{"Poliza_ID":"POL-00234","Estado":"Chihuahua","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1236578.8400000001},{"Poliza_ID":"POL-00235","Estado":"Nuevo Le\u00f3n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1479374.27},{"Poliza_ID":"POL-00236","Estado":"Zacatecas","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":672399.91},{"Poliza_ID":"POL-00237","Estado":"Baja California Sur","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1440585.55},{"Poliza_ID":"POL-00238","Estado":"Chiapas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":376685.53},{"Poliza_ID":"POL-00239","Estado":"Chiapas","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1414675.51},{"Poliza_ID":"POL-00240","Estado":"Tlaxcala","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":982358.49},{"Poliza_ID":"POL-00241","Estado":"Nayarit","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":76869.3},{"Poliza_ID":"POL-00242","Estado":"Guanajuato","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":674916.77},{"Poliza_ID":"POL-00243","Estado":"Oaxaca","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1437205.3200000001},{"Poliza_ID":"POL-00244","Estado":"Nayarit","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":599876.26},{"Poliza_ID":"POL-00245","Estado":"Tamaulipas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1424605.02},{"Poliza_ID":"POL-00246","Estado":"Hidalgo","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":50616.98},{"Poliza_ID":"POL-00247","Estado":"Ciudad de M\u00e9xico","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":523405.89},{"Poliza_ID":"POL-00248","Estado":"Quer\u00e9taro","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":243479.23},{"Poliza_ID":"POL-00249","Estado":"Baja California Sur","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":79715.13},{"Poliza_ID":"POL-00250","Estado":"Puebla","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":107504.27},{"Poliza_ID":"POL-00251","Estado":"Quintana Roo","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":465405.93},{"Poliza_ID":"POL-00252","Estado":"Nuevo Le\u00f3n","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":171091.7},{"Poliza_ID":"POL-00253","Estado":"Aguascalientes","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1013042.88},{"Poliza_ID":"POL-00254","Estado":"Yucat\u00e1n","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":1045045.3199999999},{"Poliza_ID":"POL-00255","Estado":"Sonora","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":502889.06},{"Poliza_ID":"POL-00256","Estado":"Tamaulipas","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":467450.86},{"Poliza_ID":"POL-00257","Estado":"Baja California Sur","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":410660.49},{"Poliza_ID":"POL-00258","Estado":"Durango","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1137481.0600000001},{"Poliza_ID":"POL-00259","Estado":"Nuevo Le\u00f3n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1362372.3600000001},{"Poliza_ID":"POL-00260","Estado":"Puebla","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":434186.33},{"Poliza_ID":"POL-00261","Estado":"Hidalgo","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":208487.26},{"Poliza_ID":"POL-00262","Estado":"Michoac\u00e1n","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":323919.84},{"Poliza_ID":"POL-00263","Estado":"Jalisco","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":367645.1},{"Poliza_ID":"POL-00264","Estado":"Quintana Roo","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1352056.5700000001},{"Poliza_ID":"POL-00265","Estado":"Tabasco","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1359814.47},{"Poliza_ID":"POL-00266","Estado":"Campeche","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":1493625.26},{"Poliza_ID":"POL-00267","Estado":"Quer\u00e9taro","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":268573.75},{"Poliza_ID":"POL-00268","Estado":"Durango","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":1125904.9199999999},{"Poliza_ID":"POL-00269","Estado":"Baja California Sur","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":783885.75},{"Poliza_ID":"POL-00270","Estado":"Nuevo Le\u00f3n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1000938.74},{"Poliza_ID":"POL-00271","Estado":"Michoac\u00e1n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":275979.22},{"Poliza_ID":"POL-00272","Estado":"Hidalgo","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":1153037.98},{"Poliza_ID":"POL-00273","Estado":"Tamaulipas","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1154462.96},{"Poliza_ID":"POL-00274","Estado":"Aguascalientes","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":500991.0},{"Poliza_ID":"POL-00275","Estado":"Morelos","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":798381.08},{"Poliza_ID":"POL-00276","Estado":"Hidalgo","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":701592.97},{"Poliza_ID":"POL-00277","Estado":"Puebla","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":732802.4300000001},{"Poliza_ID":"POL-00278","Estado":"Colima","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":502904.55},{"Poliza_ID":"POL-00279","Estado":"Guanajuato","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":497642.19},{"Poliza_ID":"POL-00280","Estado":"Guerrero","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1269954.6599999999},{"Poliza_ID":"POL-00281","Estado":"Ciudad de M\u00e9xico","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1005108.58},{"Poliza_ID":"POL-00282","Estado":"Quer\u00e9taro","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":75073.43},{"Poliza_ID":"POL-00283","Estado":"Baja California","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":73945.96},{"Poliza_ID":"POL-00284","Estado":"Hidalgo","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":278784.36},{"Poliza_ID":"POL-00285","Estado":"Sonora","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1442315.76},{"Poliza_ID":"POL-00286","Estado":"Nuevo Le\u00f3n","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":92966.78},{"Poliza_ID":"POL-00287","Estado":"Nuevo Le\u00f3n","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":534721.27},{"Poliza_ID":"POL-00288","Estado":"Guanajuato","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":357692.25},{"Poliza_ID":"POL-00289","Estado":"Morelos","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1466946.45},{"Poliza_ID":"POL-00290","Estado":"Campeche","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":909452.6},{"Poliza_ID":"POL-00291","Estado":"Nayarit","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":327777.44},{"Poliza_ID":"POL-00292","Estado":"M\u00e9xico","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":948360.8199999999},{"Poliza_ID":"POL-00293","Estado":"Durango","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":245507.4},{"Poliza_ID":"POL-00294","Estado":"Puebla","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":552415.09},{"Poliza_ID":"POL-00295","Estado":"San Luis Potos\u00ed","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":439649.28},{"Poliza_ID":"POL-00296","Estado":"Jalisco","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1461736.26},{"Poliza_ID":"POL-00297","Estado":"Chihuahua","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":483278.63},{"Poliza_ID":"POL-00298","Estado":"Campeche","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":88665.44},{"Poliza_ID":"POL-00299","Estado":"Sinaloa","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":898668.6800000001},{"Poliza_ID":"POL-00300","Estado":"Zacatecas","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1267452.54},{"Poliza_ID":"POL-00301","Estado":"Chihuahua","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":493141.11},{"Poliza_ID":"POL-00302","Estado":"Veracruz","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":434773.42},{"Poliza_ID":"POL-00303","Estado":"Hidalgo","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":413255.24},{"Poliza_ID":"POL-00304","Estado":"Oaxaca","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":1313138.5700000001},{"Poliza_ID":"POL-00305","Estado":"Tabasco","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":256758.08},{"Poliza_ID":"POL-00306","Estado":"Aguascalientes","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":410904.0},{"Poliza_ID":"POL-00307","Estado":"Michoac\u00e1n","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1286674.1599999999},{"Poliza_ID":"POL-00308","Estado":"Nuevo Le\u00f3n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":289274.5},{"Poliza_ID":"POL-00309","Estado":"Veracruz","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":355423.57},{"Poliza_ID":"POL-00310","Estado":"Quer\u00e9taro","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":895870.8},{"Poliza_ID":"POL-00311","Estado":"Zacatecas","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":837353.61},{"Poliza_ID":"POL-00312","Estado":"Ciudad de M\u00e9xico","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1356796.8},{"Poliza_ID":"POL-00313","Estado":"Aguascalientes","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1352898.5700000001},{"Poliza_ID":"POL-00314","Estado":"Veracruz","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1369005.1599999999},{"Poliza_ID":"POL-00315","Estado":"Michoac\u00e1n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1336159.8700000001},{"Poliza_ID":"POL-00316","Estado":"Baja California Sur","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":509415.8},{"Poliza_ID":"POL-00317","Estado":"Durango","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":961945.3100000001},{"Poliza_ID":"POL-00318","Estado":"Coahuila","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":944741.26},{"Poliza_ID":"POL-00319","Estado":"Quer\u00e9taro","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":352977.12},{"Poliza_ID":"POL-00320","Estado":"Chiapas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1497607.1299999999},{"Poliza_ID":"POL-00321","Estado":"Tamaulipas","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":890138.67},{"Poliza_ID":"POL-00322","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":64767.59},{"Poliza_ID":"POL-00323","Estado":"Nuevo Le\u00f3n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":778063.83},{"Poliza_ID":"POL-00324","Estado":"Puebla","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":91761.75},{"Poliza_ID":"POL-00325","Estado":"Guerrero","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":860287.9300000001},{"Poliza_ID":"POL-00326","Estado":"Hidalgo","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1294156.5700000001},{"Poliza_ID":"POL-00327","Estado":"Hidalgo","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1148669.77},{"Poliza_ID":"POL-00328","Estado":"Zacatecas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":792476.29},{"Poliza_ID":"POL-00329","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":503892.09},{"Poliza_ID":"POL-00330","Estado":"Baja California Sur","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1371615.27},{"Poliza_ID":"POL-00331","Estado":"Guerrero","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1250258.45},{"Poliza_ID":"POL-00332","Estado":"Campeche","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":559097.99},{"Poliza_ID":"POL-00333","Estado":"San Luis Potos\u00ed","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":413603.61},{"Poliza_ID":"POL-00334","Estado":"Colima","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":736610.53},{"Poliza_ID":"POL-00335","Estado":"Nuevo Le\u00f3n","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1376641.97},{"Poliza_ID":"POL-00336","Estado":"M\u00e9xico","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":194069.87},{"Poliza_ID":"POL-00337","Estado":"Nayarit","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":337637.34},{"Poliza_ID":"POL-00338","Estado":"Sinaloa","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":149859.34},{"Poliza_ID":"POL-00339","Estado":"Guanajuato","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":510672.07},{"Poliza_ID":"POL-00340","Estado":"Quintana Roo","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1335014.23},{"Poliza_ID":"POL-00341","Estado":"Guanajuato","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":404227.38},{"Poliza_ID":"POL-00342","Estado":"Baja California Sur","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":763127.61},{"Poliza_ID":"POL-00343","Estado":"Baja California Sur","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":451118.57},{"Poliza_ID":"POL-00344","Estado":"Nayarit","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1402504.0900000001},{"Poliza_ID":"POL-00345","Estado":"Tamaulipas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":542434.41},{"Poliza_ID":"POL-00346","Estado":"Guanajuato","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1120948.04},{"Poliza_ID":"POL-00347","Estado":"Chihuahua","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":310049.92},{"Poliza_ID":"POL-00348","Estado":"Quintana Roo","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":1060676.1200000001},{"Poliza_ID":"POL-00349","Estado":"Veracruz","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":424884.37},{"Poliza_ID":"POL-00350","Estado":"Baja California","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1317926.3600000001},{"Poliza_ID":"POL-00351","Estado":"Morelos","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":574325.36},{"Poliza_ID":"POL-00352","Estado":"Zacatecas","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":783552.23},{"Poliza_ID":"POL-00353","Estado":"Zacatecas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":974378.1899999999},{"Poliza_ID":"POL-00354","Estado":"Quer\u00e9taro","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":777220.37},{"Poliza_ID":"POL-00355","Estado":"Baja California","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":850627.58},{"Poliza_ID":"POL-00356","Estado":"Puebla","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":166049.58},{"Poliza_ID":"POL-00357","Estado":"Puebla","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1182527.6899999999},{"Poliza_ID":"POL-00358","Estado":"Coahuila","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":772741.21},{"Poliza_ID":"POL-00359","Estado":"Tamaulipas","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1474221.3600000001},{"Poliza_ID":"POL-00360","Estado":"Aguascalientes","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1099560.52},{"Poliza_ID":"POL-00361","Estado":"Hidalgo","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":280764.32},{"Poliza_ID":"POL-00362","Estado":"M\u00e9xico","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1157042.25},{"Poliza_ID":"POL-00363","Estado":"Ciudad de M\u00e9xico","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":293987.14},{"Poliza_ID":"POL-00364","Estado":"Campeche","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":204431.68},{"Poliza_ID":"POL-00365","Estado":"Zacatecas","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":548884.8},{"Poliza_ID":"POL-00366","Estado":"San Luis Potos\u00ed","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":759002.92},{"Poliza_ID":"POL-00367","Estado":"Puebla","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":304050.15},{"Poliza_ID":"POL-00368","Estado":"Tabasco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1389575.3600000001},{"Poliza_ID":"POL-00369","Estado":"Aguascalientes","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":564589.49},{"Poliza_ID":"POL-00370","Estado":"Ciudad de M\u00e9xico","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":563774.98},{"Poliza_ID":"POL-00371","Estado":"Quer\u00e9taro","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":1250774.6100000001},{"Poliza_ID":"POL-00372","Estado":"Oaxaca","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":350778.2},{"Poliza_ID":"POL-00373","Estado":"Veracruz","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":334841.12},{"Poliza_ID":"POL-00374","Estado":"Campeche","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":316151.85},{"Poliza_ID":"POL-00375","Estado":"Sonora","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":205506.47},{"Poliza_ID":"POL-00376","Estado":"Sonora","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":969570.75},{"Poliza_ID":"POL-00377","Estado":"Guanajuato","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":587466.5},{"Poliza_ID":"POL-00378","Estado":"Nayarit","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":438101.65},{"Poliza_ID":"POL-00379","Estado":"Coahuila","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1228912.97},{"Poliza_ID":"POL-00380","Estado":"Tlaxcala","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":718982.39},{"Poliza_ID":"POL-00381","Estado":"Tabasco","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":83712.89},{"Poliza_ID":"POL-00382","Estado":"Yucat\u00e1n","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":342351.45},{"Poliza_ID":"POL-00383","Estado":"Sinaloa","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1368479.6899999999},{"Poliza_ID":"POL-00384","Estado":"Guerrero","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1308621.29},{"Poliza_ID":"POL-00385","Estado":"Chihuahua","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":372249.73},{"Poliza_ID":"POL-00386","Estado":"Colima","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":312599.05},{"Poliza_ID":"POL-00387","Estado":"M\u00e9xico","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":272754.58},{"Poliza_ID":"POL-00388","Estado":"Oaxaca","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1194912.5600000001},{"Poliza_ID":"POL-00389","Estado":"Guanajuato","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1004827.12},{"Poliza_ID":"POL-00390","Estado":"Nuevo Le\u00f3n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1309705.45},{"Poliza_ID":"POL-00391","Estado":"Morelos","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":693837.04},{"Poliza_ID":"POL-00392","Estado":"Aguascalientes","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":66309.68},{"Poliza_ID":"POL-00393","Estado":"Veracruz","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":705585.71},{"Poliza_ID":"POL-00394","Estado":"Aguascalientes","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1381802.8799999999},{"Poliza_ID":"POL-00395","Estado":"Coahuila","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":860258.38},{"Poliza_ID":"POL-00396","Estado":"Chiapas","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":135274.96},{"Poliza_ID":"POL-00397","Estado":"Veracruz","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":549397.9300000001},{"Poliza_ID":"POL-00398","Estado":"Morelos","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1212378.8799999999},{"Poliza_ID":"POL-00399","Estado":"Tlaxcala","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":958832.05},{"Poliza_ID":"POL-00400","Estado":"Aguascalientes","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1458079.72},{"Poliza_ID":"POL-00401","Estado":"Tlaxcala","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":181777.23},{"Poliza_ID":"POL-00402","Estado":"Coahuila","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1231322.8500000001},{"Poliza_ID":"POL-00403","Estado":"Nayarit","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":394194.77},{"Poliza_ID":"POL-00404","Estado":"Tlaxcala","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":438393.27},{"Poliza_ID":"POL-00405","Estado":"San Luis Potos\u00ed","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":55854.34},{"Poliza_ID":"POL-00406","Estado":"Yucat\u00e1n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1381304.78},{"Poliza_ID":"POL-00407","Estado":"Tamaulipas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":467145.02},{"Poliza_ID":"POL-00408","Estado":"Yucat\u00e1n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1335233.97},{"Poliza_ID":"POL-00409","Estado":"Nuevo Le\u00f3n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1264353.3899999999},{"Poliza_ID":"POL-00410","Estado":"Colima","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1426839.1399999999},{"Poliza_ID":"POL-00411","Estado":"Durango","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":905947.29},{"Poliza_ID":"POL-00412","Estado":"Chihuahua","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":159096.83},{"Poliza_ID":"POL-00413","Estado":"M\u00e9xico","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1025613.49},{"Poliza_ID":"POL-00414","Estado":"Tlaxcala","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":776699.99},{"Poliza_ID":"POL-00415","Estado":"Puebla","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1231922.3500000001},{"Poliza_ID":"POL-00416","Estado":"Jalisco","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1143007.6499999999},{"Poliza_ID":"POL-00417","Estado":"Puebla","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":121800.45},{"Poliza_ID":"POL-00418","Estado":"Tamaulipas","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":851945.05},{"Poliza_ID":"POL-00419","Estado":"Baja California Sur","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1089247.1000000001},{"Poliza_ID":"POL-00420","Estado":"Baja California Sur","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":122408.81},{"Poliza_ID":"POL-00421","Estado":"Baja California","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1443436.73},{"Poliza_ID":"POL-00422","Estado":"San Luis Potos\u00ed","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":778132.35},{"Poliza_ID":"POL-00423","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":167644.47},{"Poliza_ID":"POL-00424","Estado":"Baja California Sur","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1038270.63},{"Poliza_ID":"POL-00425","Estado":"Zacatecas","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":299272.79},{"Poliza_ID":"POL-00426","Estado":"Morelos","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1461474.95},{"Poliza_ID":"POL-00427","Estado":"Tlaxcala","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1218779.8200000001},{"Poliza_ID":"POL-00428","Estado":"Tamaulipas","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":1366662.45},{"Poliza_ID":"POL-00429","Estado":"Morelos","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":640110.05},{"Poliza_ID":"POL-00430","Estado":"Guerrero","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":901520.4},{"Poliza_ID":"POL-00431","Estado":"Yucat\u00e1n","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":307772.84},{"Poliza_ID":"POL-00432","Estado":"Guanajuato","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1159589.0},{"Poliza_ID":"POL-00433","Estado":"Jalisco","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":875125.85},{"Poliza_ID":"POL-00434","Estado":"Coahuila","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1070941.03},{"Poliza_ID":"POL-00435","Estado":"Chiapas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":114604.96},{"Poliza_ID":"POL-00436","Estado":"Sinaloa","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":811577.66},{"Poliza_ID":"POL-00437","Estado":"Michoac\u00e1n","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":496327.77},{"Poliza_ID":"POL-00438","Estado":"Sinaloa","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":890671.08},{"Poliza_ID":"POL-00439","Estado":"Hidalgo","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":128827.4},{"Poliza_ID":"POL-00440","Estado":"Michoac\u00e1n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":487786.35},{"Poliza_ID":"POL-00441","Estado":"Campeche","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":874172.3199999999},{"Poliza_ID":"POL-00442","Estado":"Zacatecas","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":977069.42},{"Poliza_ID":"POL-00443","Estado":"Coahuila","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":513905.58},{"Poliza_ID":"POL-00444","Estado":"Puebla","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":132889.25},{"Poliza_ID":"POL-00445","Estado":"Zacatecas","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":864590.71},{"Poliza_ID":"POL-00446","Estado":"Jalisco","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":127816.58},{"Poliza_ID":"POL-00447","Estado":"Quintana Roo","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1223881.3999999999},{"Poliza_ID":"POL-00448","Estado":"Veracruz","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":1178186.7},{"Poliza_ID":"POL-00449","Estado":"San Luis Potos\u00ed","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":97289.31},{"Poliza_ID":"POL-00450","Estado":"Tamaulipas","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":953305.5600000001},{"Poliza_ID":"POL-00451","Estado":"Nuevo Le\u00f3n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":768464.3100000001},{"Poliza_ID":"POL-00452","Estado":"Aguascalientes","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1049314.47},{"Poliza_ID":"POL-00453","Estado":"Tabasco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1044905.98},{"Poliza_ID":"POL-00454","Estado":"Baja California Sur","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":422921.81},{"Poliza_ID":"POL-00455","Estado":"Campeche","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":339092.44},{"Poliza_ID":"POL-00456","Estado":"Hidalgo","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":1049156.6000000001},{"Poliza_ID":"POL-00457","Estado":"Sinaloa","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1001756.12},{"Poliza_ID":"POL-00458","Estado":"Nayarit","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":858767.55},{"Poliza_ID":"POL-00459","Estado":"Nayarit","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":640365.64},{"Poliza_ID":"POL-00460","Estado":"Morelos","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":658289.34},{"Poliza_ID":"POL-00461","Estado":"Tlaxcala","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1357331.1000000001},{"Poliza_ID":"POL-00462","Estado":"Baja California","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1083109.1100000001},{"Poliza_ID":"POL-00463","Estado":"Quer\u00e9taro","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":245174.06},{"Poliza_ID":"POL-00464","Estado":"Guerrero","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1476857.1100000001},{"Poliza_ID":"POL-00465","Estado":"Oaxaca","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":325209.54},{"Poliza_ID":"POL-00466","Estado":"Colima","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":846494.9300000001},{"Poliza_ID":"POL-00467","Estado":"Chihuahua","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":552924.1899999999},{"Poliza_ID":"POL-00468","Estado":"Baja California Sur","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":962232.66},{"Poliza_ID":"POL-00469","Estado":"Oaxaca","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1178728.7},{"Poliza_ID":"POL-00470","Estado":"Sinaloa","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":1204818.8899999999},{"Poliza_ID":"POL-00471","Estado":"Yucat\u00e1n","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":605007.14},{"Poliza_ID":"POL-00472","Estado":"M\u00e9xico","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":455788.6},{"Poliza_ID":"POL-00473","Estado":"Chiapas","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1443109.95},{"Poliza_ID":"POL-00474","Estado":"Veracruz","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":129738.2},{"Poliza_ID":"POL-00475","Estado":"Durango","Ramo":"Autos","Nivel_Riesgo":"Medio","Monto_Asegurado":392378.35},{"Poliza_ID":"POL-00476","Estado":"Chihuahua","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":540371.22},{"Poliza_ID":"POL-00477","Estado":"Quer\u00e9taro","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":1469865.6599999999},{"Poliza_ID":"POL-00478","Estado":"Baja California","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":300173.4},{"Poliza_ID":"POL-00479","Estado":"Sinaloa","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":1377324.0700000001},{"Poliza_ID":"POL-00480","Estado":"Guerrero","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":577025.3100000001},{"Poliza_ID":"POL-00481","Estado":"Baja California Sur","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1291886.73},{"Poliza_ID":"POL-00482","Estado":"Guanajuato","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":1447094.04},{"Poliza_ID":"POL-00483","Estado":"Colima","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":65810.75},{"Poliza_ID":"POL-00484","Estado":"Michoac\u00e1n","Ramo":"Da\u00f1os","Nivel_Riesgo":"Medio","Monto_Asegurado":934737.71},{"Poliza_ID":"POL-00485","Estado":"Guerrero","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":1429510.5900000001},{"Poliza_ID":"POL-00486","Estado":"Baja California Sur","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":161435.4},{"Poliza_ID":"POL-00487","Estado":"Quintana Roo","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Medio","Monto_Asegurado":1473848.24},{"Poliza_ID":"POL-00488","Estado":"Quer\u00e9taro","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":379303.38},{"Poliza_ID":"POL-00489","Estado":"Tabasco","Ramo":"Vida","Nivel_Riesgo":"Alto","Monto_Asegurado":648250.29},{"Poliza_ID":"POL-00490","Estado":"Michoac\u00e1n","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1308455.79},{"Poliza_ID":"POL-00491","Estado":"Nuevo Le\u00f3n","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":655161.3},{"Poliza_ID":"POL-00492","Estado":"Ciudad de M\u00e9xico","Ramo":"Vida","Nivel_Riesgo":"Medio","Monto_Asegurado":1239014.9199999999},{"Poliza_ID":"POL-00493","Estado":"Sonora","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":1345409.3300000001},{"Poliza_ID":"POL-00494","Estado":"Aguascalientes","Ramo":"Autos","Nivel_Riesgo":"Alto","Monto_Asegurado":1346041.3400000001},{"Poliza_ID":"POL-00495","Estado":"Michoac\u00e1n","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Alto","Monto_Asegurado":256169.44},{"Poliza_ID":"POL-00496","Estado":"Hidalgo","Ramo":"Da\u00f1os","Nivel_Riesgo":"Bajo","Monto_Asegurado":1420538.3799999999},{"Poliza_ID":"POL-00497","Estado":"San Luis Potos\u00ed","Ramo":"Autos","Nivel_Riesgo":"Bajo","Monto_Asegurado":943967.1800000001},{"Poliza_ID":"POL-00498","Estado":"Guanajuato","Ramo":"Vida","Nivel_Riesgo":"Bajo","Monto_Asegurado":628542.51},{"Poliza_ID":"POL-00499","Estado":"Tabasco","Ramo":"Gastos M\u00e9dicos","Nivel_Riesgo":"Bajo","Monto_Asegurado":854391.01},{"Poliza_ID":"POL-00500","Estado":"Oaxaca","Ramo":"Da\u00f1os","Nivel_Riesgo":"Alto","Monto_Asegurado":531353.9}];
+            let geojsonMx = null;
+            
+            // Estado Global de Filtros
+            let currentFilters = {
+                estado: null,
+                ramo: null,
+                riesgo: null
+            };
+            
+            let dataTableInstance = null;
+
+            // Paleta
+            const color_bajo = "#C5CAE9";
+            const color_medio = "#7E57C2";
+            const color_alto = "#311B92";
+            
+            // Formatters
+            const fmtMoney = new Intl.NumberFormat('es-MX', { style: 'currency', currency: 'MXN', maximumFractionDigits: 0 });
+
+            async function initDashboard() {
+                try {
+                    const req = await fetch('https://raw.githubusercontent.com/angelnmara/geojson/master/mexicoHigh.json');
+                    geojsonMx = await req.json();
+                    updateAll();
+                    initDataTable();
+                } catch(e) {
+                    console.error("Error cargando GeoJSON", e);
+                }
+            }
+
+            function getFilteredData() {
+                return rawData.filter(d => {
+                    let pass = true;
+                    if(currentFilters.estado && d.Estado !== currentFilters.estado) pass = false;
+                    if(currentFilters.ramo && d.Ramo !== currentFilters.ramo) pass = false;
+                    if(currentFilters.riesgo && d.Nivel_Riesgo !== currentFilters.riesgo) pass = false;
+                    return pass;
+                });
+            }
+
+            function updateAll() {
+                const data = getFilteredData();
+                updateKPIs(data);
+                updateMap(data);
+                updateBar(data);
+                updatePie(data);
+                updateTop5(data);
+                updateTable(data);
+                
+                // Mostrar u ocultar botón de limpieza
+                const btnReset = document.getElementById('btnResetFilters');
+                if(currentFilters.estado || currentFilters.ramo || currentFilters.riesgo) {
+                    btnReset.style.display = 'inline-block';
+                } else {
+                    btnReset.style.display = 'none';
+                }
+                
+                // UI de KPIs activos
+                document.getElementById('kpi-card-bajo').classList.toggle('active-filter', currentFilters.riesgo === 'Bajo');
+                document.getElementById('kpi-card-medio').classList.toggle('active-filter', currentFilters.riesgo === 'Medio');
+                document.getElementById('kpi-card-alto').classList.toggle('active-filter', currentFilters.riesgo === 'Alto');
+            }
+
+            function toggleRiskFilter(riesgoVal) {
+                if(currentFilters.riesgo === riesgoVal) currentFilters.riesgo = null;
+                else currentFilters.riesgo = riesgoVal;
+                updateAll();
+            }
+
+            function resetAllFilters() {
+                currentFilters.estado = null;
+                currentFilters.ramo = null;
+                currentFilters.riesgo = null;
+                updateAll();
+            }
+
+            function updateKPIs(data) {
+                document.getElementById('kpi-total').innerText = data.length;
+                
+                const suma = data.reduce((acc, curr) => acc + curr.Monto_Asegurado, 0);
+                document.getElementById('kpi-suma').innerText = fmtMoney.format(suma);
+                
+                document.getElementById('kpi-bajo').innerText = data.filter(d => d.Nivel_Riesgo === 'Bajo').length;
+                document.getElementById('kpi-medio').innerText = data.filter(d => d.Nivel_Riesgo === 'Medio').length;
+                document.getElementById('kpi-alto').innerText = data.filter(d => d.Nivel_Riesgo === 'Alto').length;
+            }
+
+            function updateMap(data) {
+                if(!geojsonMx) return;
+                
+                // Agrupar
+                let mapData = {};
+                data.forEach(d => {
+                    let st = d.Estado;
+                    // Correcciones mapeo
+                    if(st === 'Estado de México') st = 'México';
+                    if(st === 'CDMX' || st === 'Distrito Federal') st = 'Ciudad de México';
+                    
+                    mapData[st] = (mapData[st] || 0) + 1;
+                });
+
+                let locs = Object.keys(mapData);
+                let vals = Object.values(mapData);
+
+                let trace = {
+                    type: "choropleth",
+                    geojson: geojsonMx,
+                    locations: locs,
+                    z: vals,
+                    featureidkey: "properties.name",
+                    colorscale: "Purp",
+                    showscale: true,
+                    marker: { line: {color: 'white', width: 0.5} },
+                    colorbar: { orientation: "h", x: 0.5, y: -0.1, len: 0.8, thickness: 10, title: "Pólizas" }
+                };
+
+                let layout = {
+                    geo: { fitbounds: "locations", visible: false },
+                    margin: {l:0, r:0, t:0, b:0},
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0)',
+                    dragmode: false
+                };
+
+                Plotly.react('plotly-mapa', [trace], layout, {displayModeBar: false});
+                
+                document.getElementById('plotly-mapa').removeAllListeners('plotly_click');
+                document.getElementById('plotly-mapa').on('plotly_click', function(data){
+                    let clickedState = data.points[0].location;
+                    if(currentFilters.estado === clickedState) currentFilters.estado = null;
+                    else currentFilters.estado = clickedState;
+                    updateAll();
+                });
+            }
+
+            function updateBar(data) {
+                let grouped = {};
+                data.forEach(d => {
+                    if(!grouped[d.Ramo]) grouped[d.Ramo] = { 'Bajo':0, 'Medio':0, 'Alto':0 };
+                    grouped[d.Ramo][d.Nivel_Riesgo]++;
+                });
+
+                let ramos = Object.keys(grouped);
+                let traceBajo = { x: ramos, y: ramos.map(r => grouped[r]['Bajo']), name: 'Bajo', type: 'bar', marker: {color: color_bajo} };
+                let traceMedio = { x: ramos, y: ramos.map(r => grouped[r]['Medio']), name: 'Medio', type: 'bar', marker: {color: color_medio} };
+                let traceAlto = { x: ramos, y: ramos.map(r => grouped[r]['Alto']), name: 'Alto', type: 'bar', marker: {color: color_alto} };
+
+                let layout = {
+                    barmode: 'stack',
+                    margin: {l:20, r:10, t:20, b:20},
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    plot_bgcolor: 'rgba(0,0,0,0)',
+                    legend: {orientation: "h", yanchor: "bottom", y: 1.1, xanchor: "center", x: 0.5},
+                    yaxis: { showgrid: true, gridcolor: "#E4E7EB" }
+                };
+
+                Plotly.react('plotly-bar', [traceBajo, traceMedio, traceAlto], layout, {displayModeBar: false});
+                
+                document.getElementById('plotly-bar').removeAllListeners('plotly_click');
+                document.getElementById('plotly-bar').on('plotly_click', function(data){
+                    let clickedRamo = data.points[0].x;
+                    if(currentFilters.ramo === clickedRamo) currentFilters.ramo = null;
+                    else currentFilters.ramo = clickedRamo;
+                    updateAll();
+                });
+            }
+
+            function updatePie(data) {
+                let grouped = {};
+                data.forEach(d => { grouped[d.Ramo] = (grouped[d.Ramo] || 0) + 1; });
+                
+                let labels = Object.keys(grouped);
+                let values = Object.values(grouped);
+
+                let trace = {
+                    type: "pie",
+                    labels: labels,
+                    values: values,
+                    hole: 0.65,
+                    marker: { colors: ["#311B92", "#5C6BC0", "#9FA8DA", "#D1C4E9"] }
+                };
+
+                let layout = {
+                    margin: {l:10, r:10, t:10, b:10},
+                    paper_bgcolor: 'rgba(0,0,0,0)',
+                    showlegend: true,
+                    legend: {orientation: "h", y: -0.1}
+                };
+
+                Plotly.react('plotly-pie', [trace], layout, {displayModeBar: false});
+            }
+
+            function updateTop5(data) {
+                // Filtrar solo altos dentro de la data actual
+                let altos = data.filter(d => d.Nivel_Riesgo === 'Alto');
+                let mapData = {};
+                altos.forEach(d => { mapData[d.Estado] = (mapData[d.Estado] || 0) + 1; });
+                
+                let sorted = Object.keys(mapData).map(k => ({estado: k, count: mapData[k]})).sort((a,b) => b.count - a.count).slice(0, 5);
+                
+                let html = '<table class="min-table"><thead><tr><th>Estado</th><th>Pólizas Alto Riesgo</th></tr></thead><tbody>';
+                if(sorted.length === 0) html += '<tr><td colspan="2">No hay zonas críticas con los filtros actuales.</td></tr>';
+                
+                sorted.forEach(s => {
+                    html += `<tr onclick="currentFilters.estado='${s.estado}'; updateAll();"><td>${s.estado}</td><td>${s.count}</td></tr>`;
+                });
+                html += '</tbody></table>';
+                
+                document.getElementById('top5-container').innerHTML = html;
+            }
+
+            function initDataTable() {
+                let cols = [
+                    { data: "Poliza_ID", title: "Póliza ID" },
+                    { data: "Estado", title: "Estado" },
+                    { data: "Ramo", title: "Ramo" },
+                    { data: "Nivel_Riesgo", title: "Nivel Riesgo" },
+                    { 
+                        data: "Monto_Asegurado", 
+                        title: "Monto Asegurado",
+                        render: function(data) { return fmtMoney.format(data); }
+                    }
+                ];
+                
+                dataTableInstance = $('#tablaPolizas').DataTable({
+                    data: rawData,
+                    columns: cols,
+                    pageLength: 15,
+                    responsive: true,
+                    language: { url: "//cdn.datatables.net/plug-ins/1.13.6/i18n/es-ES.json" }
+                });
+            }
+
+            function updateTable(data) {
+                if(dataTableInstance) {
+                    dataTableInstance.clear();
+                    dataTableInstance.rows.add(data);
+                    dataTableInstance.draw();
+                }
+            }
+
+            function openTab(evt, tabName) {
+                let contents = document.getElementsByClassName("tab-content");
+                for (let i = 0; i < contents.length; i++) contents[i].style.display = "none";
+                
+                let links = document.getElementsByClassName("tab-label");
+                for (let i = 0; i < links.length; i++) links[i].classList.remove("active");
+                
+                document.getElementById(tabName).style.display = "block";
+                evt.currentTarget.classList.add("active");
+                
+                window.dispatchEvent(new Event('resize'));
+            }
+
+            window.addEventListener('load', initDashboard);
+
+            window.addEventListener('resize', function() {
+                document.querySelectorAll('.js-plotly-plot').forEach(function(p) {
+                    Plotly.Plots.resize(p);
+                });
+            });
+        </script>
+    </body>
+    </html>
